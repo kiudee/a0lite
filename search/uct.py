@@ -6,8 +6,8 @@ import chess
 import numpy as np
 from search.util import cp
 
-FPU = -1.0
-FPU_ROOT = 0.0
+FPU = 0.0
+FPU_ROOT = 1.0
 
 
 class UCTNode(object):
@@ -81,21 +81,22 @@ class RENTSNode(UCTNode):
         parent=None,
         move=None,
         prior=0,
-        discount_factor=1.0,
-        eps=0.0001,
+        discount_factor=0.99,
+        eps=0.001,
         **kwargs
     ):
         super().__init__(board=board, parent=parent, move=move, prior=prior, **kwargs)
         self.discount_factor = discount_factor
         self.eps = eps
         self.policy = prior
-        self.total_value = 0.0
 
     def add_child(self, move, prior):
         self.children[move] = RENTSNode(parent=self, move=move, prior=prior)
 
     def best_child(self, C):
         n_children = len(self.children)
+        if n_children == 1:
+            return list(self.children.values())[0]
         visits = [child.number_visits + 1 for child in self.children.values()]
         # sum_visits = np.sum(visits)
         # if sum_visits == 0:
