@@ -81,8 +81,8 @@ class RENTSNode(UCTNode):
         parent=None,
         move=None,
         prior=0,
-        discount_factor=0.99,
-        eps=0.1,
+        discount_factor=1.0,
+        eps=0.0001,
         **kwargs
     ):
         super().__init__(board=board, parent=parent, move=move, prior=prior, **kwargs)
@@ -112,6 +112,11 @@ class RENTSNode(UCTNode):
         max_arg = rel_entropy_max(Q, p)
         new_p = (1 - lambda_s) * max_arg + lambda_s / n_children
         #print(new_p)
+        if np.any(new_p < 0.0):
+            print("lambda_s = {}".format(lambda_s))
+            print("Q = {}".format(Q))
+            print("p = {}".format(p))
+            print("new_p = {}".format(new_p))
         new_p /= new_p.sum()
         for i, child in enumerate(self.children.values()):
             child.policy = new_p[i]
@@ -120,19 +125,20 @@ class RENTSNode(UCTNode):
     def backup(self, value_estimate: float):
         current = self
         # Child nodes are multiplied by -1 because we want max(-opponent eval)
-        turnfactor = -1
-        #print("Initial estimate: {}".format(value_estimate))
+        #print("\nInitial estimate: {}".format(value_estimate))
         while current.parent is not None:
             current.number_visits += 1
-            current.total_value += value_estimate * turnfactor * self.discount_factor
+            #print("Value before: {}".format(current.total_value))
+            current.total_value += -value_estimate * self.discount_factor
+            #print("Value after: {}".format(current.total_value))
+            current = current.parent
             Q, p = np.array(
                 [(child.Q(), child.policy) for child in current.children.values()]
             ).T
+            #print("Q: {}".format(Q))
+            #print("p: {}".format(p))
             value_estimate = rel_entropy_value(Q, p)
             #print("Value: {}".format(value_estimate))
-            #print("Turnfactor: {}".format(turnfactor))
-            current = current.parent
-            turnfactor *= -1
         current.number_visits += 1
 
 
@@ -193,10 +199,11 @@ def UCT_search(
     if send is not None:
         for nd in sorted(root.children.items(), key=lambda item: item[1].number_visits):
             send(
-                "info string {} {} \t(P: {}%) \t(Q: {})".format(
+                "info string {} {} \t(P: {}%) \t (Pol: {}%) \t(Q: {})".format(
                     nd[1].move,
                     nd[1].number_visits,
                     round(nd[1].prior * 100, 2),
+                    round(nd[1].policy * 100, 2),
                     round(nd[1].Q(), 5),
                 )
             )
