@@ -10,8 +10,8 @@ FPU = -1.0
 FPU_ROOT = 0.0
 
 
-class UCTNode:
-    def __init__(self, board=None, parent=None, move=None, prior=0):
+class UCTNode(object):
+    def __init__(self, board=None, parent=None, move=None, prior=0, **kwargs):
         self.board = board
         self.move = move
         self.is_expanded = False
@@ -64,6 +64,78 @@ class UCTNode:
         current.number_visits += 1
 
 
+def rel_entropy_value(Q, p):
+    return np.log(p.dot(np.exp(Q)))
+
+
+def rel_entropy_max(Q, p):
+    denominator = p.dot(np.exp(Q))
+    return p * np.exp(Q) / denominator
+
+
+class RENTSNode(UCTNode):
+
+    def __init__(
+        self,
+        board=None,
+        parent=None,
+        move=None,
+        prior=0,
+        discount_factor=0.99,
+        eps=0.1,
+        **kwargs
+    ):
+        super().__init__(board=board, parent=parent, move=move, prior=prior, **kwargs)
+        self.discount_factor = discount_factor
+        self.eps = eps
+        self.policy = prior
+        self.total_value = 0.0
+
+    def add_child(self, move, prior):
+        self.children[move] = RENTSNode(parent=self, move=move, prior=prior)
+
+    def best_child(self, C):
+        n_children = len(self.children)
+        visits = [child.number_visits + 1 for child in self.children.values()]
+        # sum_visits = np.sum(visits)
+        # if sum_visits == 0:
+        #     p = np.array([child.policy for child in self.children.values()])
+        #     p /= p.sum()
+        #     return list(self.children.values())[int(np.random.choice(n_children, size=1, p=p))]
+        lambda_s = self.eps * n_children / np.log(np.sum(visits))
+        Q, p = np.array(
+            [(child.Q(), child.policy) for child in self.children.values()]
+        ).T
+        #print("lambda_s = {}".format(lambda_s))
+        #print("Q = {}".format(Q))
+        #print("p = {}".format(p))
+        max_arg = rel_entropy_max(Q, p)
+        new_p = (1 - lambda_s) * max_arg + lambda_s / n_children
+        #print(new_p)
+        new_p /= new_p.sum()
+        for i, child in enumerate(self.children.values()):
+            child.policy = new_p[i]
+        return list(self.children.values())[int(np.random.choice(n_children, size=1, p=new_p))]
+
+    def backup(self, value_estimate: float):
+        current = self
+        # Child nodes are multiplied by -1 because we want max(-opponent eval)
+        turnfactor = -1
+        #print("Initial estimate: {}".format(value_estimate))
+        while current.parent is not None:
+            current.number_visits += 1
+            current.total_value += value_estimate * turnfactor * self.discount_factor
+            Q, p = np.array(
+                [(child.Q(), child.policy) for child in current.children.values()]
+            ).T
+            value_estimate = rel_entropy_value(Q, p)
+            #print("Value: {}".format(value_estimate))
+            #print("Turnfactor: {}".format(turnfactor))
+            current = current.parent
+            turnfactor *= -1
+        current.number_visits += 1
+
+
 def get_best_move(root):
     bestmove, node = max(
         root.children.items(), key=lambda item: (item[1].number_visits, item[1].Q())
@@ -100,7 +172,7 @@ def UCT_search(
     count = 0
     delta_last = 0
 
-    root = UCTNode(board)
+    root = RENTSNode(board)
     for i in range(num_reads):
         count += 1
         leaf = root.select_leaf(C)
@@ -114,7 +186,7 @@ def UCT_search(
             bestmove, node, score = get_best_move(root)
             send_info(send, bestmove, count, delta, score)
 
-        if (time != None) and (delta > max_time):
+        if (time is not None) and (delta > max_time):
             break
 
     bestmove, node, score = get_best_move(root)
