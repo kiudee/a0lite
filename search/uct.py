@@ -18,7 +18,7 @@ class UCTNode:
         self.parent = parent  # Optional[UCTNode]
         self.children = OrderedDict()  # Dict[move, UCTNode]
         self.prior = prior  # float
-        if parent == None:
+        if parent is None:
             self.total_value = FPU_ROOT  # float
         else:
             self.total_value = FPU
@@ -73,7 +73,7 @@ def get_best_move(root):
 
 
 def send_info(send, bestmove, count, delta, score):
-    if send != None:
+    if send is not None:
         send(
             "info depth 1 seldepth 1 score cp {} nodes {} nps {} pv {}".format(
                 score, count, int(round(count / delta, 0)), bestmove
@@ -91,7 +91,7 @@ def UCT_search(
     tree=None,
     send=None,
 ):
-    if max_time == None:
+    if max_time is None:
         # search for a maximum of an hour
         max_time = 3600.0
     max_time = max_time - 0.05
@@ -118,7 +118,7 @@ def UCT_search(
             break
 
     bestmove, node, score = get_best_move(root)
-    if send != None:
+    if send is not None:
         for nd in sorted(root.children.items(), key=lambda item: item[1].number_visits):
             send(
                 "info string {} {} \t(P: {}%) \t(Q: {})".format(
