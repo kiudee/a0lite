@@ -213,7 +213,7 @@ def get_best_move(root):
     bestmove, node = max(
         root.children.items(), key=lambda item: (item[1].number_visits, item[1].Q())
     )
-    score = int(round(cp(node.Q()), 0))
+    score = int(round(cp(np.tanh(node.Q())), 0))
     return bestmove, node, score
 
 
@@ -272,7 +272,7 @@ def UCT_search(
                     nd[1].number_visits,
                     round(nd[1].prior * 100, 2),
                     round(nd[1].policy * 100, 2),
-                    round(nd[1].Q(), 5),
+                    round(np.tanh(nd[1].Q()), 5),
                 )
             )
         send(
