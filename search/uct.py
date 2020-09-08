@@ -89,7 +89,7 @@ class RENTSNode(UCTNode):
         move=None,
         prior=0,
         discount_factor=1.0,
-        eps=0.1,
+        eps=0.05,
         prior_visits=1,
         value_prior_strength=0.01,
         maximum_exploration=1.0,
