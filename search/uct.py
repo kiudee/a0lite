@@ -93,6 +93,7 @@ class RENTSNode(UCTNode):
         prior_visits=1,
         maximum_exploration=1.0,
         policy_temperature=1.4,
+        init_V=True,
         **kwargs
     ):
         super().__init__(board=board, parent=parent, move=move, prior=prior, **kwargs)
@@ -103,6 +104,7 @@ class RENTSNode(UCTNode):
         self.maximum_exploration = maximum_exploration
         self.policy_temperature = policy_temperature
         self.initial_value = 0
+        self.init_V = init_V
 
     def add_child(self, move, prior):
         self.children[move] = RENTSNode(parent=self, move=move, prior=prior)
@@ -137,11 +139,12 @@ class RENTSNode(UCTNode):
         current = self
         value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
         value_estimate = np.arctanh(value_estimate)
-        self.initial_value = value_estimate
-        n_children = len(self.children)
-        for child in self.children.values():
-            prior = min(max(child.prior, 0.001), 0.999)
-            child.total_value = self.initial_value + np.arctanh(prior - 1 / n_children)
+        if not self.init_V:
+            self.initial_value = value_estimate
+            n_children = len(self.children)
+            for child in self.children.values():
+                prior = min(max(child.prior, 0.001), 0.999)
+                child.total_value = self.initial_value + np.arctanh(prior - 1 / n_children)
         while current.parent is not None:
             current.number_visits += 1
             current.total_value += -value_estimate * current.discount_factor
@@ -204,6 +207,13 @@ def UCT_search(
         leaf = root.select_leaf(C)
         child_priors, value_estimate = net.evaluate(leaf.board)
         leaf.expand(child_priors)
+        if leaf.init_V:
+            for child in leaf.children.values():
+                if not child.board:
+                    child.board = child.parent.board.copy()
+                    child.board.push_uci(child.move)
+                _, child_value = net.evaluate(child.board)
+                child.total_value = -np.arctanh(child_value)
         leaf.backup(value_estimate)
         now = time()
         delta = now - start
