@@ -64,13 +64,13 @@ class UCTNode(object):
         current.number_visits += 1
 
 
-def rel_entropy_value(Q, p):
-    return np.log(p.dot(np.exp(Q)))
+def rel_entropy_value(Q, p, t=1.0):
+    return np.log(p.dot(np.exp(Q / t)))
 
 
-def rel_entropy_max(Q, p):
-    denominator = p.dot(np.exp(Q))
-    return p * np.exp(Q) / denominator
+def rel_entropy_max(Q, p, t=1.0):
+    denominator = p.dot(np.exp(Q / t))
+    return p * np.exp(Q / t) / denominator
 
 
 def logit(p):
@@ -89,10 +89,11 @@ class RENTSNode(UCTNode):
         move=None,
         prior=0,
         discount_factor=1.0,
-        eps=0.05,
+        eps=0.01,
         prior_visits=1,
         value_prior_strength=0.01,
         maximum_exploration=1.0,
+        policy_temperature=1.4,
         init_strategy="VplusP",
         fpu_value=0.0,
         fpu_strategy="reduction",
@@ -106,6 +107,7 @@ class RENTSNode(UCTNode):
         self.policy = prior
         self.prior_visits = prior_visits
         self.maximum_exploration = maximum_exploration
+        self.policy_temperature = policy_temperature
         self.init_strategy = init_strategy
         self.fpu_strategy = fpu_strategy
         self.fpu_strategy_at_root = fpu_strategy_at_root
@@ -165,7 +167,7 @@ class RENTSNode(UCTNode):
                 self.eps * n_children / np.log(sum_visits + self.prior_visits), 0.0, 1.0
             )
         lambda_s = min(self.maximum_exploration, lambda_s)
-        max_arg = rel_entropy_max(Q, p)
+        max_arg = rel_entropy_max(Q, p, t=self.policy_temperature)
         new_p = (1 - lambda_s) * max_arg + lambda_s / n_children
         new_p /= new_p.sum()
         for i, child in enumerate(self.children.values()):
@@ -199,7 +201,7 @@ class RENTSNode(UCTNode):
                     for child in current.children.values()
                 ]
             ).T
-            value_estimate = rel_entropy_value(Q, p)
+            value_estimate = rel_entropy_value(Q, p, t=self.policy_temperature)
             current.update_policy(Q, p, visits)
         current.number_visits += 1
 
