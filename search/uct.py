@@ -207,14 +207,15 @@ def UCT_search(
         leaf = root.select_leaf(C)
         child_priors, value_estimate = net.evaluate(leaf.board)
         leaf.expand(child_priors)
+        leaf.backup(value_estimate)
         if leaf.init_V:
             for child in leaf.children.values():
                 if not child.board:
                     child.board = child.parent.board.copy()
                     child.board.push_uci(child.move)
                 _, child_value = net.evaluate(child.board)
-                child.total_value = -np.arctanh(child_value)
-        leaf.backup(value_estimate)
+                child_value = np.clip(child_value, -1 + 1e-10, 1 - 1e-10)
+                child.total_value = -(np.arctanh(child_value) + leaf.total_value) / leaf.policy_temperature
         now = time()
         delta = now - start
         if delta - delta_last > 5:
