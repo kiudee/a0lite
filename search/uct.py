@@ -91,14 +91,8 @@ class RENTSNode(UCTNode):
         discount_factor=1.0,
         eps=0.01,
         prior_visits=1,
-        value_prior_strength=0.01,
         maximum_exploration=1.0,
         policy_temperature=1.4,
-        init_strategy="VplusP",
-        fpu_value=0.0,
-        fpu_strategy="reduction",
-        fpu_value_at_root=0.1,
-        fpu_strategy_at_root="absolute",
         **kwargs
     ):
         super().__init__(board=board, parent=parent, move=move, prior=prior, **kwargs)
@@ -108,24 +102,7 @@ class RENTSNode(UCTNode):
         self.prior_visits = prior_visits
         self.maximum_exploration = maximum_exploration
         self.policy_temperature = policy_temperature
-        self.init_strategy = init_strategy
-        self.fpu_strategy = fpu_strategy
-        self.fpu_strategy_at_root = fpu_strategy_at_root
-        # self.total_value = -np.log(1/min(max(prior, 0.01), 0.99) - 1) * value_prior_strength
-        if init_strategy == "fpu":
-            is_root = parent is None or parent.parent is None
-            if is_root:
-                fpu = fpu_value_at_root
-            else:
-                fpu = fpu_value
-            if (is_root and self.fpu_strategy_at_root == "reduction") or (
-                not is_root and self.fpu_strategy == "reduction"
-            ):
-                self.total_value = -fpu
-            else:
-                self.total_value = fpu
-        elif init_strategy == "VplusP" or init_strategy == "logP":
-            self.initial_value = 0
+        self.initial_value = 0
 
     def add_child(self, move, prior):
         self.children[move] = RENTSNode(parent=self, move=move, prior=prior)
@@ -139,23 +116,6 @@ class RENTSNode(UCTNode):
         return list(self.children.values())[
             int(np.random.choice(n_children, size=1, p=p))
         ]
-
-    def update_value(self, value, is_leaf):
-        is_root = self.parent is None or self.parent.parent is None
-        if is_leaf:
-            if (
-                (
-                    (is_root and self.fpu_strategy_at_root == "reduction")
-                    or (not is_root and self.fpu_strategy == "reduction")
-                )
-                or self.init_strategy == "logP"
-                or self.init_strategy == "VplusP"
-            ):
-                self.total_value += value
-            else:
-                self.total_value = value
-        else:
-            self.total_value += value
 
     def update_policy(self, Q, p, visits):
         n_children = len(self.children)
@@ -175,25 +135,16 @@ class RENTSNode(UCTNode):
 
     def backup(self, value_estimate: float):
         current = self
-        if self.init_strategy == "VplusP":
-            value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
-            value_estimate = np.arctanh(value_estimate)
-            self.initial_value = value_estimate
-            n_children = len(self.children)
-            for child in self.children.values():
-                prior = min(max(child.prior, 0.001), 0.999)
-                child.total_value = self.initial_value + np.arctanh(prior - 1 / n_children)
-        elif self.init_strategy == "logP":
-            value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
-            value_estimate = np.arctanh(value_estimate)
-            for child in self.children.values():
-                prior = min(max(child.prior, 0.001), 0.999)
-                child.total_value = np.log(prior)
-        # print("\nValue estimate: {}".format(value_estimate))
+        value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
+        value_estimate = np.arctanh(value_estimate)
+        self.initial_value = value_estimate
+        n_children = len(self.children)
+        for child in self.children.values():
+            prior = min(max(child.prior, 0.001), 0.999)
+            child.total_value = self.initial_value + np.arctanh(prior - 1 / n_children)
         while current.parent is not None:
             current.number_visits += 1
-            val = -value_estimate * current.discount_factor
-            current.update_value(val, is_leaf=self == current)
+            current.total_value += -value_estimate * current.discount_factor
             current = current.parent
             Q, p, visits = np.array(
                 [
@@ -212,9 +163,9 @@ def get_best_move(root):
             root.children.items(), key=lambda item: (item[1].policy, item[1].Q())
         )
     else:
-    bestmove, node = max(
-        root.children.items(), key=lambda item: (item[1].number_visits, item[1].Q())
-    )
+        bestmove, node = max(
+            root.children.items(), key=lambda item: (item[1].number_visits, item[1].Q())
+        )
     score = int(round(cp(np.tanh(node.Q())), 0))
     return bestmove, node, score
 
