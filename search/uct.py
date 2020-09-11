@@ -65,12 +65,15 @@ class UCTNode(object):
 
 
 def rel_entropy_value(Q, p, t=1.0):
-    return np.log(p.dot(np.exp(Q / t)))
-
+    scaled_q = Q / t
+    max_val = np.max(scaled_q)
+    return np.log(p.dot(np.exp(scaled_q - max_val))) + max_val
 
 def rel_entropy_max(Q, p, t=1.0):
-    denominator = p.dot(np.exp(Q / t))
-    return p * np.exp(Q / t) / denominator
+    scaled_q = Q / t
+    max_val = np.max(scaled_q)
+    terms = p * np.exp(scaled_q - max_val)
+    return terms / terms.sum()
 
 
 def logit(p):
