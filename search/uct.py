@@ -136,12 +136,11 @@ class RENTSNode(UCTNode):
     def backup(self, value_estimate: float):
         current = self
         value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
-        value_estimate = np.arctanh(value_estimate)
         self.initial_value = value_estimate
         n_children = len(self.children)
         for child in self.children.values():
             prior = min(max(child.prior, 0.001), 0.999)
-            child.total_value = self.initial_value + np.arctanh(prior - 1 / n_children)
+            child.total_value = self.initial_value + np.log(prior * n_children)
         while current.parent is not None:
             current.number_visits += 1
             current.total_value += -value_estimate * current.discount_factor
@@ -211,6 +210,16 @@ def UCT_search(
             delta_last = delta
             bestmove, node, score = get_best_move(root)
             send_info(send, bestmove, count, delta, score)
+            for nd in sorted(root.children.items(), key=lambda item: item[1].policy):
+                send(
+                    "info string {} {} \t(P: {}%) \t (Pol: {}%) \t(Q: {})".format(
+                        nd[1].move,
+                        nd[1].number_visits,
+                        round(nd[1].prior * 100, 2),
+                        round(nd[1].policy * 100, 2),
+                        round(np.tanh(nd[1].Q()), 5),
+                    )
+                )
 
         if (time is not None) and (delta > max_time):
             break
