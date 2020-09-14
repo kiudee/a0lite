@@ -150,7 +150,7 @@ class RENTSNode(UCTNode):
             current = current.parent
             Q, p, visits = np.array(
                 [
-                    (child.Q(), child.policy, child.number_visits)
+                    (child.Q(), child.prior, child.number_visits)
                     for child in current.children.values()
                 ]
             ).T
