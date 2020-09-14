@@ -106,6 +106,17 @@ class RENTSNode(UCTNode):
         self.maximum_exploration = maximum_exploration
         self.policy_temperature = policy_temperature
         self.initial_value = 0
+        self._shift = 0.0
+        self.number_shifts = 0
+
+    @property
+    def shift(self):
+        return self._shift / (1 + self.number_shifts)
+
+    @shift.setter
+    def shift(self, val):
+        self._shift = val
+        self.number_shifts += 1
 
     def add_child(self, move, prior):
         self.children[move] = RENTSNode(parent=self, move=move, prior=prior)
@@ -141,19 +152,42 @@ class RENTSNode(UCTNode):
         value_estimate = np.clip(value_estimate, -1 + 1e-10, 1 - 1e-10)
         self.initial_value = value_estimate
         n_children = len(self.children)
+        if self.parent is not None:
+            prior = np.clip(self.prior, 0.001, 0.999)
+            estimated_shift = (-value_estimate - self.parent.initial_value
+                               - np.log(prior * len(self.parent.children)))
+            self.parent.shift += estimated_shift
         for child in self.children.values():
-            prior = min(max(child.prior, 0.001), 0.999)
+            prior = np.clip(child.prior, 0.001, 0.999)
             child.total_value = self.initial_value + np.log(prior * n_children)
         while current.parent is not None:
             current.number_visits += 1
             current.total_value += -value_estimate * current.discount_factor
+
+            if current == self:
+                Q, p, visits = [], [], []
+                for child in current.parent.children.values():
+                    p.append(child.policy)
+                    visits.append(child.number_visits)
+                    n_children = len(current.parent.children)
+                    shift = current.parent.shift
+                    if child.number_visits == 0:
+                        # We keep updating its estimated Q value here:
+                        child.total_value = current.parent.initial_value + 0.1 *  np.log(child.prior * n_children) + shift
+                    Q.append(child.Q())
+                Q = np.array(Q)
+                p = np.array(p)
+                visits = np.array(visits)
+            else:
+                Q, p, visits = np.array(
+                    [
+                        (child.Q(), child.policy, child.number_visits)
+                        for child in current.parent.children.values()
+                    ]
+                ).T
+
             current = current.parent
-            Q, p, visits = np.array(
-                [
-                    (child.Q(), child.policy, child.number_visits)
-                    for child in current.children.values()
-                ]
-            ).T
+
             value_estimate = rel_entropy_value(Q, p, t=self.policy_temperature)
             current.update_policy(Q, p, visits)
         current.number_visits += 1
@@ -230,7 +264,7 @@ def UCT_search(
     bestmove, node, score = get_best_move(root)
     if send is not None:
         root.best_child(1.0)
-        for nd in sorted(root.children.items(), key=lambda item: item[1].policy):
+        for nd in sorted(root.children.items(), key=lambda item: item[1].policy + item[1].Q() * 1e-6):
             send(
                 "info string {} {} \t(P: {}%) \t (Pol: {}%) \t(Q: {})".format(
                     nd[1].move,
